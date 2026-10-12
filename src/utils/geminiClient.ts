@@ -45,6 +45,7 @@ export async function scanPrescriptionImage(
   lang: string = 'hi'
 ): Promise<{ success: boolean; data?: any; error?: string }> {
   const clientKey = getClientKey();
+  let endpointStatus: number | null = null;
 
   // 1. Try server endpoint first
   try {
@@ -76,6 +77,7 @@ export async function scanPrescriptionImage(
         console.warn('Could not parse server JSON response:', jsonErr);
       }
     } else {
+      endpointStatus = response.status;
       console.warn(`Server responded with status ${response.status}`);
     }
   } catch (netErr) {
@@ -180,10 +182,17 @@ Do NOT wrap with markdown. Return pure JSON.`;
   // 3. Fallback error guidance
   return {
     success: false,
-    error:
-      lang === 'en'
-        ? 'Prescription scan failed or service returned 404. For Vercel/Netlify deployment, make sure GEMINI_API_KEY is configured in your platform Project Settings -> Environment Variables.'
-        : 'पर्ची स्कैन सेवा से संपर्क नहीं हो सका (Status 404)। यदि आपने Vercel पर डिप्लॉय किया है, तो कृपया Vercel Environment Variables में GEMINI_API_KEY जोड़ें।',
+    error: endpointStatus === 404
+      ? lang === 'en'
+        ? 'Prescription scan API returned 404. Redeploy the latest Vercel project and ensure the root api/ folder is included. Adding GEMINI_API_KEY alone will not fix a missing API route.'
+        : 'पर्ची स्कैन API पर 404 मिला। Vercel पर latest deployment करें और सुनिश्चित करें कि root api/ folder deploy हुआ है। सिर्फ GEMINI_API_KEY जोड़ने से missing API route ठीक नहीं होगा।'
+      : endpointStatus !== null
+        ? lang === 'en'
+          ? `Prescription scan service returned status ${endpointStatus}. Please check the deployment logs and try again.`
+          : `पर्ची स्कैन सेवा से संपर्क में समस्या आई (Status ${endpointStatus})। Deployment logs जाँचें और फिर कोशिश करें।`
+        : lang === 'en'
+          ? 'Could not connect to the prescription scan service. Please check your connection and try again.'
+          : 'पर्ची स्कैन सेवा से संपर्क नहीं हो सका। अपना इंटरनेट कनेक्शन जाँचें और फिर कोशिश करें।',
   };
 }
 
