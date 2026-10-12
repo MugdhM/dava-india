@@ -47,9 +47,9 @@ app.use((req, _res, next) => {
   next();
 });
 
-// Helper to get GoogleGenAI client with dynamic key support (from env or x-gemini-key header)
-function getAIClient(overrideKey?: string): GoogleGenAI | null {
-  const key = overrideKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+// Keep Gemini credentials server-side; never accept them from browser requests.
+function getAIClient(): GoogleGenAI | null {
+  const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   return new GoogleGenAI({
     apiKey: key,
@@ -413,8 +413,7 @@ app.post('/api/scan-prescription', async (req, res) => {
 
     const languageInstruction = LANGUAGE_PROMPT_MAP[lang] || LANGUAGE_PROMPT_MAP.hi;
 
-    const customKey = (req.headers['x-gemini-key'] as string) || '';
-    const activeAi = getAIClient(customKey);
+    const activeAi = getAIClient();
 
     if (!activeAi) {
       return res.status(200).json({
@@ -440,13 +439,14 @@ Your task is to transcribe and analyze the EXACT prescription image provided.
 CRITICAL INSTRUCTIONS FOR GENUINE SCANNING:
 1. Extract ONLY the real medicines and drugs actually visible, written, or printed on this specific prescription image.
 2. DO NOT hallucinate, guess, or substitute generic or default medications. If the prescription says Augmentin 625, write Augmentin 625. If it says Telma 40, write Telma 40. If it has 1 medicine, extract 1 medicine. If it has 3, extract 3.
-3. If the prescription handwriting is partially decipherable, extract the best clinical match of the drug name and dosage with high accuracy.
+3. Transcribe only medicine names, strengths, doses, and schedules that are legible. If handwriting is uncertain, mark it unclear instead of guessing.
 4. If this image is completely blank, not a medical document, or completely illegible, return {"error": "unreadable", "meds": []}.
 
 LANGUAGE MANDATE (CRITICAL):
 The user has chosen: ${languageInstruction}.
 All explanations, purposes, dosages, meal instructions, side effects, warnings, and follow-up MUST be written strictly in ${languageInstruction}.
 The medicine name and strength (e.g., "Tab. Telma 40mg", "Syp. Azithral 200mg") should be in standard Latin script for accurate pharmacy identification.
+Do not infer diagnosis, dose timing, duration, side effects, or food instructions. Use an empty times array and days: 0 when the prescription does not clearly state them.
 
 Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
 {
@@ -459,9 +459,9 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
       "name": "Exact medicine name and strength from this prescription",
       "purpose": "Purpose/indication strictly in ${languageInstruction}",
       "dose": "Dosage strictly in ${languageInstruction}",
-      "times": ["morning", "afternoon", "evening", "night"],
+      "times": [],
       "meal": "Meal instructions (e.g. खाने के बाद / खाने से पहले) strictly in ${languageInstruction}",
-      "days": 5,
+      "days": 0,
       "side_effects": "Known mild side effects strictly in ${languageInstruction}",
       "avoid_food": "Dietary cautions strictly in ${languageInstruction}",
       "avoid_drugs": "Contraindicated medicines strictly in ${languageInstruction}"
@@ -472,11 +472,7 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
 }`;
 
     // Fast, lightweight models first for serverless environments (Vercel/Netlify)
-    const candidateModels = [
-      'gemini-3.1-flash-lite',
-      'gemini-flash-latest',
-      'gemini-3.8-flash',
-    ];
+    const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
 
     let lastError: any = null;
     let rawText = '';
@@ -499,9 +495,9 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
           },
         });
 
-        // 9s timeout per model for snappy serverless execution
+        // Leave enough time for handwriting recognition while staying within the function limit.
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout with model ${modelName}`)), 9000)
+          setTimeout(() => reject(new Error(`Timeout with model ${modelName}`)), 22000)
         );
 
         const response: any = await Promise.race([scanPromise, timeoutPromise]);
@@ -536,7 +532,33 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
 
     try {
       const parsedData = JSON.parse(cleanJson);
-      if (parsedData.error === 'unreadable' || (!parsedData.meds || parsedData.meds.length === 0)) {
+      const validTimes = ['morning', 'afternoon', 'evening', 'night'];
+      const medicines = Array.isArray(parsedData.meds)
+        ? parsedData.meds
+            .filter((med: unknown) => med !== null && typeof med === 'object')
+            .map((med: Record<string, unknown>) => ({
+              name: typeof med.name === 'string' ? med.name.trim() : '',
+              purpose: typeof med.purpose === 'string' ? med.purpose : '',
+              dose: typeof med.dose === 'string' ? med.dose : '',
+              times: Array.isArray(med.times)
+                ? med.times.filter(
+                    (time: unknown): time is string =>
+                      typeof time === 'string' && validTimes.includes(time)
+                  )
+                : [],
+              meal: typeof med.meal === 'string' ? med.meal : '',
+              days:
+                typeof med.days === 'number' && Number.isFinite(med.days) && med.days > 0
+                  ? Math.floor(med.days)
+                  : 0,
+              side_effects: typeof med.side_effects === 'string' ? med.side_effects : '',
+              avoid_food: typeof med.avoid_food === 'string' ? med.avoid_food : '',
+              avoid_drugs: typeof med.avoid_drugs === 'string' ? med.avoid_drugs : '',
+            }))
+            .filter((med) => med.name.length > 0)
+        : [];
+
+      if (parsedData.error === 'unreadable' || medicines.length === 0) {
         return res.json({
           success: false,
           error:
@@ -545,6 +567,15 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
               : 'इस फोटो में दवाइयों के नाम स्पष्ट नहीं दिख रहे हैं। कृपया पर्ची की साफ और स्पष्ट फोटो अपलोड करें।',
         });
       }
+      parsedData.meds = medicines;
+      parsedData.warnings = Array.isArray(parsedData.warnings)
+        ? parsedData.warnings.filter((warning: unknown): warning is string => typeof warning === 'string')
+        : [];
+      parsedData.doctor = typeof parsedData.doctor === 'string' ? parsedData.doctor : '';
+      parsedData.date = typeof parsedData.date === 'string' ? parsedData.date : '';
+      parsedData.patientName = typeof parsedData.patientName === 'string' ? parsedData.patientName : '';
+      parsedData.summary = typeof parsedData.summary === 'string' ? parsedData.summary : '';
+      parsedData.followUp = typeof parsedData.followUp === 'string' ? parsedData.followUp : '';
       return res.json({ success: true, data: parsedData, isRealScan: true });
     } catch (parseErr) {
       console.error('[Prescription OCR] JSON parse error:', parseErr, cleanJson);
@@ -809,11 +840,10 @@ INSTRUCTIONS:
 4. Patient context: ${medContext}`;
 
     // First try Gemini API with fast models and 9-second timeout
-    const customKey = (req.headers['x-gemini-key'] as string) || '';
-    const activeAi = getAIClient(customKey);
+    const activeAi = getAIClient();
 
     if (activeAi) {
-      const chatModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      const chatModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
       for (const modelName of chatModels) {
         try {
           const chatPromise = activeAi.models.generateContent({
@@ -884,11 +914,10 @@ app.post('/api/check-interactions', async (req, res) => {
     let resultData: any = null;
 
     // 1. Try Gemini AI with candidate models & 9s timeout
-    const customKey = (req.headers['x-gemini-key'] as string) || '';
-    const activeAi = getAIClient(customKey);
+    const activeAi = getAIClient();
 
     if (activeAi) {
-      const candidates = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      const candidates = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
       const promptText = `You are a clinical pharmacologist. Check for drug-drug interactions and dietary precautions between these medicines: ${medicines.join(', ')}.
 Language instruction: All explanations and advice MUST be 100% in ${languageInstruction}.
 Analyze:
@@ -1003,8 +1032,7 @@ app.post('/api/appointments', (req, res) => {
 
 // 5. System Health & Environment Check
 app.get('/api/health', (req, res) => {
-  const customKey = (req.headers['x-gemini-key'] as string) || '';
-  const hasKey = Boolean(customKey || process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY);
+  const hasKey = Boolean(process.env.GEMINI_API_KEY);
   res.json({
     status: 'ok',
     hasGeminiKey: hasKey,

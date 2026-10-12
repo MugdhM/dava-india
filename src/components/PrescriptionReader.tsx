@@ -30,9 +30,9 @@ interface PrescriptionReaderProps {
 
 function compressScanImage(image: CanvasImageSource, width: number, height: number): string {
   let scale = Math.min(1, 1600 / Math.max(width, height));
-  const qualities = [0.82, 0.72, 0.65];
+  const qualities = [0.82, 0.7, 0.58];
 
-  for (let attempt = 0; attempt < qualities.length; attempt++) {
+  for (let attempt = 0; attempt < 9; attempt++) {
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(width * scale));
     canvas.height = Math.max(1, Math.round(height * scale));
@@ -43,15 +43,20 @@ function compressScanImage(image: CanvasImageSource, width: number, height: numb
     }
 
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/jpeg', qualities[attempt]);
-    if (dataUrl.length <= 3_500_000 || attempt === qualities.length - 1) {
+    const dataUrl = canvas.toDataURL(
+      'image/jpeg',
+      qualities[attempt % qualities.length]
+    );
+    if (dataUrl.length <= 2_800_000) {
       return dataUrl;
     }
 
-    scale *= 0.75;
+    if ((attempt + 1) % qualities.length === 0) {
+      scale *= 0.75;
+    }
   }
 
-  throw new Error('Could not compress prescription image.');
+  throw new Error('Photo is too large to upload. Please choose a smaller image.');
 }
 
 export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
@@ -97,7 +102,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'साइड इफेक्ट',
       speakWarnings: 'सावधानी',
       daysCourse: 'दिन का कोर्स',
-      autoRemindSuccess: 'दवाइयों के अलार्म भी अपने-आप रिमाइंडर टैब में जुड़ गए हैं!',
+      autoRemindSuccess: 'केवल स्पष्ट समय और अवधि वाली दवाइयों के रिमाइंडर बने हैं। बाकी के लिए मैन्युअल रिमाइंडर सेट करें।',
     },
     en: {
       readyBadge: 'Prescription Ready',
@@ -112,7 +117,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'Side effects',
       speakWarnings: 'Safety alerts',
       daysCourse: 'Days Course',
-      autoRemindSuccess: 'Dose reminders have been automatically added to your Reminders tab!',
+      autoRemindSuccess: 'Automatic reminders are created only when the prescription clearly specifies timing and duration. Set other reminders manually.',
     },
     mwr: {
       readyBadge: 'पर्ची तैयार है सा',
@@ -127,7 +132,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'साइड-इफेक्ट',
       speakWarnings: 'चेतावनी',
       daysCourse: 'दिनां रो कोर्स',
-      autoRemindSuccess: 'दवाई रा अलार्म भी रिमाइंडर टैब में जुड़ ग्या है सा!',
+      autoRemindSuccess: 'रीत अर अवधि साफ लिखेली होवै, उण दवाइयां रा रिमाइंडर बनै है। बाकी खातर मैन्युअल रिमाइंडर बनावो।',
     },
     gu: {
       readyBadge: 'પ્રિસ્ક્રિપ્શન તૈયાર છે',
@@ -142,7 +147,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'આડઅસર',
       speakWarnings: 'ચેતવણી',
       daysCourse: 'દિવસનો કોર્સ',
-      autoRemindSuccess: 'દવાના એલાર્મ આપોઆપ રિમાઇન્ડર ટેબમાં ઉમેરાઈ ગયા છે!',
+      autoRemindSuccess: 'સ્પષ્ટ સમય અને અવધિ ધરાવતી દવાઓ માટે જ રિમાઇન્ડર બનાવાયા છે. અન્ય માટે મેન્યુઅલ રિમાઇન્ડર સેટ કરો.',
     },
     ta: {
       readyBadge: 'மருந்துச் சீட்டு தயார்',
@@ -157,7 +162,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'பக்க விளைவுகள்',
       speakWarnings: 'எச்சரிக்கை',
       daysCourse: 'நாட்கள் சிகிச்சை',
-      autoRemindSuccess: 'மருந்து நினைவூட்டல்கள் தானாகவே அட்டவணையில் சேர்க்கப்பட்டுள்ளன!',
+      autoRemindSuccess: 'தெளிவான நேரம் மற்றும் கால அளவு உள்ள மருந்துகளுக்கு மட்டுமே நினைவூட்டல்கள் உருவாக்கப்பட்டன. மற்றவற்றை கைமுறையாக அமைக்கவும்.',
     },
     pa: {
       readyBadge: 'ਪਰਚੀ ਤਿਆਰ ਹੈ',
@@ -172,7 +177,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       speakSideEffects: 'ਮਾੜੇ ਪ੍ਰਭਾਵ',
       speakWarnings: 'ਸਾਵਧਾਨੀ',
       daysCourse: 'ਦਿਨਾਂ ਦਾ ਕੋਰਸ',
-      autoRemindSuccess: 'ਦਵਾਈਆਂ ਦੇ ਅਲਾਰਮ ਵੀ ਆਪੇ ਰਿਮਾਈਂਡਰ ਟੈਬ ਵਿੱਚ ਸ਼ਾਮਲ ਹੋ ਗਏ ਹਨ!',
+      autoRemindSuccess: 'ਸਪੱਸ਼ਟ ਸਮੇਂ ਅਤੇ ਮਿਆਦ ਵਾਲੀਆਂ ਦਵਾਈਆਂ ਲਈ ਹੀ ਰਿਮਾਈਂਡਰ ਬਣੇ ਹਨ। ਹੋਰਾਂ ਲਈ ਹੱਥੀਂ ਰਿਮਾਈਂਡਰ ਸੈੱਟ ਕਰੋ।',
     },
   }[currentLang] || {
     readyBadge: 'पर्ची तैयार है',
@@ -187,7 +192,7 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
     speakSideEffects: 'साइड इफेक्ट',
     speakWarnings: 'सावधानी',
     daysCourse: 'दिन का कोर्स',
-    autoRemindSuccess: 'दवाइयों के अलार्म भी अपने-आप रिमाइंडर टैब में जुड़ गए हैं!',
+    autoRemindSuccess: 'केवल स्पष्ट समय और अवधि वाली दवाइयों के रिमाइंडर बने हैं। बाकी के लिए मैन्युअल रिमाइंडर सेट करें।',
   };
 
   // Start Camera
@@ -362,9 +367,9 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
       }
     } catch (err: any) {
       console.error('Scan error:', err);
-      setScanError(
-        'स्कैनिंग के दौरान समस्या आई। कृपया नेटवर्क जांचें और दोबारा प्रयास करें।'
-      );
+      setScanError(currentLang === 'en'
+        ? 'The scan failed. Check your connection and try again.'
+        : 'स्कैनिंग के दौरान समस्या आई। कृपया नेटवर्क जांचें और दोबारा प्रयास करें।');
     } finally {
       setIsScanning(false);
     }
@@ -613,7 +618,9 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
               <div className="flex-1">
                 <p className="font-bold text-rose-900">{scanError}</p>
                 <p className="text-xs text-rose-700 mt-1">
-                  सुझाव: पर्ची की फोटो सीधी, बिना परछाई और अच्छी रोशनी में खींचें ताकि डॉक्टर की लिखावट और दवाइयाँ साफ पढ़ी जा सकें।
+                  {currentLang === 'en'
+                    ? 'Tip: Keep the prescription straight, shadow-free, and well lit so the handwriting and medicines are easy to read.'
+                    : 'सुझाव: पर्ची की फोटो सीधी, बिना परछाई और अच्छी रोशनी में खींचें ताकि डॉक्टर की लिखावट और दवाइयाँ साफ पढ़ी जा सकें।'}
                 </p>
               </div>
               <button

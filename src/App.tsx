@@ -460,8 +460,10 @@ export default function App() {
   };
 
   const handleAddReminderFromMed = (med: MedicineItem, rxId: string) => {
+    if (!med.times?.length || !med.days) return;
+
     const todayStr = new Date().toISOString().slice(0, 10);
-    const times = med.times && med.times.length ? med.times : ['morning'];
+    const times = med.times;
 
     times.forEach((slot) => {
       const newRem: MedicationReminder = {
@@ -479,7 +481,7 @@ export default function App() {
             ? '18:00'
             : '21:00',
         mealTiming: med.meal || 'भोजन के बाद',
-        daysTotal: med.days || 5,
+        daysTotal: med.days,
         startDate: todayStr,
         activeDaysOfWeek: [],
         takenLogs: {},
