@@ -27,23 +27,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPanel } from './components/AdminPanel';
 
-// Firebase integrationss
-import { subscribeToAuth, logOut } from './firebase/authService';
-import {
-  subscribePatients,
-  savePatient,
-  removePatient,
-  subscribePrescriptions,
-  savePrescription,
-  removePrescription,
-  subscribeReminders,
-  saveReminder,
-  removeReminder,
-  subscribeVitals,
-  saveVital,
-  saveAppointment,
-} from './firebase/firestoreService';
-import { CheckCircle2, Database, ShieldCheck, ShieldAlert, X } from 'lucide-react';
+import { ShieldAlert } from 'lucide-react';
 
 // Initial sample family patients (used once user logs in)
 const INITIAL_PATIENTS: PatientProfile[] = [
@@ -61,7 +45,7 @@ const INITIAL_PATIENTS: PatientProfile[] = [
     emergencyContactPhone: '9829012345',
     abhaId: '91-4092-8812-3341',
   },
-  {
+  { 
     id: 'pat-2',
     name: 'कौशल्या देवी (दादी जी)',
     age: 64,
@@ -305,8 +289,6 @@ export default function App() {
   });
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [showFirebaseBanner, setShowFirebaseBanner] = useState(true);
-
   // 4. Patients Profile state
   const [patients, setPatients] = useState<PatientProfile[]>(() => {
     const raw = localStorage.getItem('dawai_patients');
@@ -363,58 +345,6 @@ export default function App() {
     const raw = localStorage.getItem('dawai_appointments');
     return raw ? JSON.parse(raw) : INITIAL_APPOINTMENTS;
   });
-
-  // Firebase Real-time listeners setup
-  useEffect(() => {
-    const unsubAuth = subscribeToAuth((fbUser) => {
-      if (fbUser) {
-        const u = {
-          name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-          email: fbUser.email || '',
-          uid: fbUser.uid,
-          photoURL: fbUser.photoURL || undefined,
-        };
-        setCurrentUser(u);
-        localStorage.setItem('dawai_user', JSON.stringify(u));
-
-        // Attach listeners for this user's data
-        const unsubPatients = subscribePatients(fbUser.uid, (data) => {
-          if (data && data.length > 0) {
-            setPatients(data);
-          }
-        });
-
-        const unsubPrescriptions = subscribePrescriptions(fbUser.uid, (data) => {
-          if (data && data.length > 0) {
-            setSavedPrescriptions(data);
-          }
-        });
-
-        const unsubReminders = subscribeReminders(fbUser.uid, (data) => {
-          if (data && data.length > 0) {
-            setReminders(data);
-          }
-        });
-
-        const unsubVitals = subscribeVitals(fbUser.uid, (data) => {
-          if (data && data.length > 0) {
-            setVitals(data);
-          }
-        });
-
-        return () => {
-          unsubPatients();
-          unsubPrescriptions();
-          unsubReminders();
-          unsubVitals();
-        };
-      }
-    });
-
-    return () => {
-      unsubAuth();
-    };
-  }, []);
 
   // Sync Language and document title/lang
   useEffect(() => {
@@ -498,11 +428,6 @@ export default function App() {
 
   const handleAddAppointment = (apt: Appointment) => {
     setAppointments((prev) => [apt, ...prev]);
-    if (currentUser?.uid) {
-      saveAppointment(apt, currentUser.uid).catch((err) =>
-        console.warn('Firebase save appointment error:', err)
-      );
-    }
   };
 
   // Handlers
@@ -528,14 +453,9 @@ export default function App() {
 
   const handleSavePrescription = (rx: Prescription) => {
     setSavedPrescriptions((prev) => [rx, ...prev]);
-    if (currentUser?.uid) {
-      savePrescription(rx, currentUser.uid).catch((err) =>
-        console.warn('Firebase save prescription error:', err)
-      );
-    }
     handleTriggerNotification(
       'पर्ची सुरक्षित हुई',
-      `${rx.doctor || 'डॉक्टर'} की पर्ची आपके डैशबोर्ड और Firebase क्लाउड में सुरक्षित हो गई है।`
+      `${rx.doctor || 'डॉक्टर'} की पर्ची इस डिवाइस के लोकल स्टोरेज में सुरक्षित हो गई है।`
     );
   };
 
@@ -567,24 +487,14 @@ export default function App() {
       };
 
       setReminders((prev) => [newRem, ...prev]);
-      if (currentUser?.uid) {
-        saveReminder(newRem, currentUser.uid).catch((err) =>
-          console.warn('Firebase save reminder error:', err)
-        );
-      }
     });
   };
 
   const handleAddCustomReminder = (rem: MedicationReminder) => {
     setReminders((prev) => [rem, ...prev]);
-    if (currentUser?.uid) {
-      saveReminder(rem, currentUser.uid).catch((err) =>
-        console.warn('Firebase save custom reminder error:', err)
-      );
-    }
     handleTriggerNotification(
       'नया रिमाइंडर सक्रिय',
-      `${rem.medName} के लिए अलार्म Firebase क्लाउड में तय किया गया।`
+      `${rem.medName} के लिए अलार्म इस डिवाइस पर तय किया गया।`
     );
   };
 
@@ -599,11 +509,6 @@ export default function App() {
             updatedLogs[dateKey] = true;
           }
           const updated = { ...r, takenLogs: updatedLogs };
-          if (currentUser?.uid) {
-            saveReminder(updated, currentUser.uid).catch((err) =>
-              console.warn('Firebase update reminder error:', err)
-            );
-          }
           return updated;
         }
         return r;
@@ -613,20 +518,10 @@ export default function App() {
 
   const handleDeleteReminder = (id: string) => {
     setReminders((prev) => prev.filter((r) => r.id !== id));
-    if (currentUser?.uid) {
-      removeReminder(id).catch((err) =>
-        console.warn('Firebase remove reminder error:', err)
-      );
-    }
   };
 
   const handleDeletePrescription = (id: string) => {
     setSavedPrescriptions((prev) => prev.filter((r) => r.id !== id));
-    if (currentUser?.uid) {
-      removePrescription(id).catch((err) =>
-        console.warn('Firebase remove prescription error:', err)
-      );
-    }
   };
 
   const handleViewPrescription = (_rx: Prescription) => {
@@ -638,20 +533,10 @@ export default function App() {
   const handleAddPatient = (patient: PatientProfile) => {
     setPatients((prev) => [...prev, patient]);
     setCurrentPatientId(patient.id);
-    if (currentUser?.uid) {
-      savePatient(patient, currentUser.uid).catch((err) =>
-        console.warn('Firebase save patient error:', err)
-      );
-    }
   };
 
   const handleAddVital = (v: VitalLog) => {
     setVitals((prev) => [v, ...prev]);
-    if (currentUser?.uid) {
-      saveVital(v, currentUser.uid).catch((err) =>
-        console.warn('Firebase save vital error:', err)
-      );
-    }
   };
 
   const handleTriggerNotification = (title: string, message: string) => {
@@ -673,11 +558,6 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    try {
-      await logOut();
-    } catch (e) {
-      console.warn('Logout error:', e);
-    }
     localStorage.removeItem('dawai_user');
     setCurrentUser(null);
   };
@@ -732,35 +612,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50/50 text-slate-900 selection:bg-teal-500 selection:text-white">
-      {/* Firebase Cloud Connection Status Pill */}
-      {showFirebaseBanner && (
-        <div className="bg-linear-to-r from-emerald-700 via-teal-700 to-emerald-800 text-white text-xs px-4 py-2 border-b border-emerald-600/50 flex items-center justify-between shadow-xs">
-          <div className="flex items-center gap-2 overflow-hidden mx-auto sm:mx-0">
-            <span className="flex h-2 w-2 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-300"></span>
-            </span>
-            <Database className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
-            <span className="font-semibold truncate">
-              Firebase Console Connected:
-            </span>
-            <span className="font-mono text-[11px] bg-black/20 px-2 py-0.5 rounded-sm text-emerald-100 hidden sm:inline">
-              gen-lang-client-0424052813
-            </span>
-            <span className="text-[11px] text-emerald-200 hidden md:inline">
-              • Firestore & Google Auth Active
-            </span>
-          </div>
-          <button
-            onClick={() => setShowFirebaseBanner(false)}
-            className="text-emerald-200 hover:text-white p-1 rounded-sm cursor-pointer ml-2"
-            title="बंद करें"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
       {/* 1. Global Navigation Bar with auth guard */}
       <Navbar
         currentLang={currentLang}
@@ -842,11 +693,6 @@ export default function App() {
         onOpenAuth={() => setIsAuthModalOpen(true)}
         onAppointmentBooked={(apt) => {
           setAppointments((prev) => [apt, ...prev]);
-          if (currentUser?.uid) {
-            saveAppointment(apt, currentUser.uid).catch((err) =>
-              console.warn('Firebase save appointment error:', err)
-            );
-          }
           handleTriggerNotification(
             'अपॉइंटमेंट तय हुआ',
             `${apt.hospital} में ${apt.date} के लिए टोकन नंबर ${apt.id} जारी हुआ।`

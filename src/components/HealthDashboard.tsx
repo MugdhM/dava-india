@@ -205,7 +205,7 @@ export const HealthDashboard: React.FC<HealthDashboardProps> = ({
               </div>
               <div className="p-3 rounded-2xl bg-teal-50/70 border border-teal-100 text-xs text-teal-900 flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0 mt-0.5" />
-                <span>Firebase क्लाउड में एन्क्रिप्टेड स्टोरेज</span>
+                <span>इस browser में लोकल स्टोरेज</span>
               </div>
             </div>
 
@@ -214,7 +214,7 @@ export const HealthDashboard: React.FC<HealthDashboardProps> = ({
               className="py-3 px-8 rounded-2xl bg-linear-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-extrabold text-sm shadow-xl shadow-teal-600/30 transition-all cursor-pointer inline-flex items-center gap-2 hover:scale-102"
             >
               <User className="w-4 h-4" />
-              <span>Google या ईमेल से लॉगिन करें (Login to Access)</span>
+              <span>ईमेल से लोकल प्रोफाइल खोलें (Login to Access)</span>
             </button>
           </div>
         ) : (
@@ -240,11 +240,11 @@ export const HealthDashboard: React.FC<HealthDashboardProps> = ({
                       {currentUser.name}
                     </span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 border border-emerald-400/30">
-                      प्रमाणित मरीज
+                      लोकल प्रोफाइल
                     </span>
                   </div>
                   <span className="text-xs text-teal-200/80 block">
-                    {currentUser.email} • Firebase क्लाउड एक्टिव
+                    {currentUser.email} • इस डिवाइस पर लोकल प्रोफाइल
                   </span>
                 </div>
               </div>

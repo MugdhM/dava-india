@@ -268,12 +268,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Cloud Sync Status Pill */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-emerald-400 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            <span>Firebase & Cloud Online</span>
-          </div>
-
           <button
             onClick={onExitAdmin}
             className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold flex items-center gap-1.5 border border-slate-700 transition-all cursor-pointer"
@@ -882,24 +876,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Cloud Sync Box */}
+              {/* Local Storage Status */}
               <div className="p-6 rounded-2xl bg-slate-800/80 border border-slate-700 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <Database className="w-6 h-6 text-emerald-400" />
                     <h4 className="font-extrabold text-base text-white">
-                      Google Cloud Firestore स्थिति
+                      Browser लोकल स्टोरेज
                     </h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed mb-4">
-                    आपका प्रोजेक्ट <span className="font-mono text-emerald-300">gen-lang-client-0424052813</span> सक्रिय है। व्यवस्थापक द्वारा किए गए सभी बदलाव (योजनाएं, अलर्ट, अपॉइंटमेंट) स्वचालित रूप से क्लाउड और लोकल स्टोरेज में सिंक्रनाइज़ होते हैं।
+                    वेबसाइट का डेटा इसी browser के लोकल स्टोरेज में सेव होता है। यह दूसरे डिवाइसों के साथ क्लाउड में सिंक नहीं होता।
                   </p>
                 </div>
 
                 <div className="pt-4 border-t border-slate-700 flex items-center justify-between">
-                  <span className="text-xs text-slate-400">रीयल-टाइम लिसनर्स: चालू</span>
+                  <span className="text-xs text-slate-400">केवल इस browser पर सेव</span>
                   <button
-                    onClick={() => showToast('Firestore क्लाउड सिंक्रोनाइज़ेशन सत्यापित!')}
+                    onClick={() => showToast('डेटा इसी browser के लोकल स्टोरेज में सेव होता है।')}
                     className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs cursor-pointer"
                   >
                     सिंक जांचें
