@@ -28,6 +28,32 @@ interface PrescriptionReaderProps {
   onAddReminderFromMed: (med: MedicineItem, rxId: string) => void;
 }
 
+function compressScanImage(image: CanvasImageSource, width: number, height: number): string {
+  let scale = Math.min(1, 1600 / Math.max(width, height));
+  const qualities = [0.82, 0.72, 0.65];
+
+  for (let attempt = 0; attempt < qualities.length; attempt++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Could not prepare prescription image for scanning.');
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', qualities[attempt]);
+    if (dataUrl.length <= 3_500_000 || attempt === qualities.length - 1) {
+      return dataUrl;
+    }
+
+    scale *= 0.75;
+  }
+
+  throw new Error('Could not compress prescription image.');
+}
+
 export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
   currentLang,
   onSavePrescription,
@@ -46,7 +72,6 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
   const [isSpeakingAll, setIsSpeakingAll] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -202,17 +227,17 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
 
   // Capture Snapshot from Camera
   const captureSnapshot = () => {
-    if (videoRef.current && canvasRef.current) {
+    if (videoRef.current) {
       const video = videoRef.current;
-      const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      try {
+        const dataUrl = compressScanImage(video, width, height);
         setSelectedImage(dataUrl);
         stopCamera();
+      } catch (error) {
+        console.error('Could not prepare camera image:', error);
+        setScanError('फोटो तैयार नहीं हो सकी। कृपया दोबारा तस्वीर लें।');
       }
     }
   };
@@ -229,14 +254,26 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setSelectedImage(event.target?.result as string);
-        setParsedRx(null);
-        setScanError(null);
-        setSaveSuccessMsg(false);
+      const objectUrl = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        try {
+          setSelectedImage(compressScanImage(image, image.naturalWidth, image.naturalHeight));
+          setParsedRx(null);
+          setScanError(null);
+          setSaveSuccessMsg(false);
+        } catch (error) {
+          console.error('Could not prepare prescription image:', error);
+          setScanError('फोटो तैयार नहीं हो सकी। कृपया दूसरी तस्वीर चुनें।');
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
       };
-      reader.readAsDataURL(file);
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        setScanError('यह फोटो पढ़ी नहीं जा सकी। कृपया JPG, PNG या WEBP तस्वीर चुनें।');
+      };
+      image.src = objectUrl;
     }
   };
 
@@ -484,8 +521,6 @@ export const PrescriptionReader: React.FC<PrescriptionReaderProps> = ({
                   </span>
                 </div>
               </div>
-
-              <canvas ref={canvasRef} className="hidden" />
 
               <div className="flex items-center gap-3 mt-4">
                 <button
