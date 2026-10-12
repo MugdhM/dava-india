@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validation blueprints
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 150 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+    function isValidPatient(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             (!('age' in data) || (data.age is string && data.age.size() <= 20) || (data.age is int && data.age >= 0 && data.age <= 150)) &&
+             (!('gender' in data) || (data.gender is string && data.gender.size() <= 20)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
+             (!('bloodGroup' in data) || (data.bloodGroup is string && data.bloodGroup.size() <= 10)) &&
+             (!('allergies' in data) || (data.allergies is list && data.allergies.size() <= 50)) &&
+             (!('chronicConditions' in data) || (data.chronicConditions is list && data.chronicConditions.size() <= 50)) &&
+             (!('emergencyContactName' in data) || (data.emergencyContactName is string && data.emergencyContactName.size() <= 100)) &&
+             (!('emergencyContactPhone' in data) || (data.emergencyContactPhone is string && data.emergencyContactPhone.size() <= 30)) &&
+             (!('abhaId' in data) || (data.abhaId is string && data.abhaId.size() <= 50));
+    }
+
+    function isValidPrescription(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.summary is string && data.summary.size() <= 1500 &&
+             (!('doctor' in data) || (data.doctor is string && data.doctor.size() <= 150)) &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 30)) &&
+             (!('patientName' in data) || (data.patientName is string && data.patientName.size() <= 100)) &&
+             (!('meds' in data) || (data.meds is list && data.meds.size() <= 50)) &&
+             (!('warnings' in data) || (data.warnings is list && data.warnings.size() <= 50)) &&
+             (!('followUp' in data) || (data.followUp is string && data.followUp.size() <= 500)) &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500)) &&
+             (!('language' in data) || (data.language is string && data.language.size() <= 20));
+    }
+
+    function isValidReminder(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.medName is string && data.medName.size() > 0 && data.medName.size() <= 150 &&
+             data.dosage is string && data.dosage.size() <= 100 &&
+             (!('rxId' in data) || (data.rxId is string && data.rxId.size() <= 128)) &&
+             (!('timeSlot' in data) || (data.timeSlot is string && data.timeSlot.size() <= 30)) &&
+             (!('customTime' in data) || (data.customTime is string && data.customTime.size() <= 20)) &&
+             (!('mealTiming' in data) || (data.mealTiming is string && data.mealTiming.size() <= 100)) &&
+             (!('daysTotal' in data) || (data.daysTotal is int && data.daysTotal >= 0 && data.daysTotal <= 365)) &&
+             (!('startDate' in data) || (data.startDate is string && data.startDate.size() <= 30)) &&
+             (!('activeDaysOfWeek' in data) || (data.activeDaysOfWeek is list && data.activeDaysOfWeek.size() <= 7)) &&
+             (!('takenLogs' in data) || (data.takenLogs is map)) &&
+             (!('isActive' in data) || (data.isActive is bool));
+    }
+
+    function isValidVital(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.type is string && data.type.size() <= 30 &&
+             data.value is string && data.value.size() <= 50 &&
+             (!('date' in data) || (data.date is string && data.date.size() <= 30)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 300));
+    }
+
+    function isValidAppointment(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.patientName is string && data.patientName.size() > 0 && data.patientName.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 30 &&
+             data.date is string && data.date.size() <= 30 &&
+             data.timeSlot is string && data.timeSlot.size() <= 30 &&
+             (!('specialty' in data) || (data.specialty is string && data.specialty.size() <= 100)) &&
+             (!('doctorName' in data) || (data.doctorName is string && data.doctorName.size() <= 100)) &&
+             (!('hospital' in data) || (data.hospital is string && data.hospital.size() <= 150)) &&
+             (!('type' in data) || (data.type is string && data.type.size() <= 30)) &&
+             (!('symptoms' in data) || (data.symptoms is string && data.symptoms.size() <= 500)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 30));
+    }
+
+    // Collection matches
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isOwner(userId);
+    }
+
+    // Patients collection
+    match /patients/{patientId} {
+      allow get: if isSignedIn() && isValidId(patientId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(patientId) && request.resource.data.userId == request.auth.uid && isValidPatient(request.resource.data);
+      allow update: if isSignedIn() && isValidId(patientId) && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && isValidPatient(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(patientId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Prescriptions collection
+    match /prescriptions/{prescriptionId} {
+      allow get: if isSignedIn() && isValidId(prescriptionId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(prescriptionId) && request.resource.data.userId == request.auth.uid && isValidPrescription(request.resource.data);
+      allow update: if isSignedIn() && isValidId(prescriptionId) && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && isValidPrescription(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(prescriptionId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Reminders collection
+    match /reminders/{reminderId} {
+      allow get: if isSignedIn() && isValidId(reminderId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(reminderId) && request.resource.data.userId == request.auth.uid && isValidReminder(request.resource.data);
+      allow update: if isSignedIn() && isValidId(reminderId) && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && isValidReminder(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(reminderId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Vitals collection
+    match /vitals/{vitalId} {
+      allow get: if isSignedIn() && isValidId(vitalId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(vitalId) && request.resource.data.userId == request.auth.uid && isValidVital(request.resource.data);
+      allow update: if isSignedIn() && isValidId(vitalId) && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && isValidVital(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(vitalId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Appointments collection
+    match /appointments/{appointmentId} {
+      allow get: if isSignedIn() && isValidId(appointmentId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(appointmentId) && request.resource.data.userId == request.auth.uid && isValidAppointment(request.resource.data);
+      allow update: if isSignedIn() && isValidId(appointmentId) && resource.data.userId == request.auth.uid && request.resource.data.userId == resource.data.userId && isValidAppointment(request.resource.data);
+      allow delete: if isSignedIn() && isValidId(appointmentId) && resource.data.userId == request.auth.uid;
+    }
+  }
+}

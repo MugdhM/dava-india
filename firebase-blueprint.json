@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["uid", "email"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Family member patient health profile",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "age": { "type": "string", "maxLength": 20 },
+        "gender": { "type": "string", "maxLength": 20 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "maxLength": 100 },
+        "bloodGroup": { "type": "string", "maxLength": 10 },
+        "allergies": { "type": "array" },
+        "chronicConditions": { "type": "array" },
+        "emergencyContactName": { "type": "string", "maxLength": 100 },
+        "emergencyContactPhone": { "type": "string", "maxLength": 30 },
+        "abhaId": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "name"]
+    },
+    "Prescription": {
+      "title": "Prescription",
+      "description": "Saved prescription record with extracted medicines",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "doctor": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 30 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "summary": { "type": "string", "maxLength": 1000 },
+        "meds": { "type": "array" },
+        "warnings": { "type": "array" },
+        "followUp": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "language": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "summary"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "Medication schedule reminder",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "rxId": { "type": "string", "maxLength": 128 },
+        "medName": { "type": "string", "maxLength": 150 },
+        "dosage": { "type": "string", "maxLength": 100 },
+        "timeSlot": { "type": "string", "maxLength": 30 },
+        "customTime": { "type": "string", "maxLength": 20 },
+        "mealTiming": { "type": "string", "maxLength": 100 },
+        "daysTotal": { "type": "number" },
+        "startDate": { "type": "string", "maxLength": 30 },
+        "activeDaysOfWeek": { "type": "array" },
+        "takenLogs": { "type": "object" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "medName", "dosage"]
+    },
+    "Vital": {
+      "title": "Vital",
+      "description": "Health biometric log record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string", "maxLength": 30 },
+        "type": { "type": "string", "maxLength": 30 },
+        "value": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "type", "value"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Hospital OPD or teleconsult booking record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "patientName": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "specialty": { "type": "string", "maxLength": 100 },
+        "doctorName": { "type": "string", "maxLength": 100 },
+        "hospital": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 30 },
+        "timeSlot": { "type": "string", "maxLength": 30 },
+        "type": { "type": "string", "maxLength": 30 },
+        "symptoms": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "maxLength": 30 },
+        "createdAt": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["userId", "patientName", "phone", "date", "timeSlot"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile records indexed by auth UID"
+    },
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Family member patient health profiles"
+    },
+    "/prescriptions/{prescriptionId}": {
+      "schema": "Prescription",
+      "description": "Extracted and saved prescription details"
+    },
+    "/reminders/{reminderId}": {
+      "schema": "Reminder",
+      "description": "Medication dosage reminders and adherence logs"
+    },
+    "/vitals/{vitalId}": {
+      "schema": "Vital",
+      "description": "Vital biometric health logs (BP, sugar, weight, pulse)"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Hospital OPD and teleconsult appointments"
+    }
+  }
+}
