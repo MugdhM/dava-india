@@ -61,6 +61,60 @@ function getAIClient(): GoogleGenAI | null {
   });
 }
 
+function getGeminiErrorDetails(error: unknown): { message: string; status: string } {
+  if (!error || typeof error !== 'object') {
+    return { message: String(error ?? ''), status: '' };
+  }
+
+  const providerError = error as Record<string, unknown>;
+  const nested = providerError.error && typeof providerError.error === 'object'
+    ? providerError.error as Record<string, unknown>
+    : {};
+  return {
+    message: [
+      providerError.message,
+      nested.message,
+      providerError.statusText,
+      nested.status,
+    ].filter((part): part is string => typeof part === 'string').join(' '),
+    status: String(providerError.status ?? providerError.code ?? nested.code ?? nested.status ?? ''),
+  };
+}
+
+function getPrescriptionScanError(errors: Array<{ message: string; status: string }>, lang: string): string {
+  const details = errors.map((error) => `${error.status} ${error.message}`).join(' ').toLowerCase();
+
+  if (/api.?key|unauthorized|permission_denied|permission denied|\b401\b|\b403\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini rejected the API key or its permissions. In Google AI Studio, verify the key is active, Gemini API is enabled, and the key restrictions allow Gemini API requests.'
+      : 'Gemini API key या उसकी permission स्वीकार नहीं हुई। Google AI Studio में जाँचें कि key सक्रिय है, Gemini API चालू है और key restrictions Gemini API requests की अनुमति देती हैं।';
+  }
+  if (/resource_exhausted|quota|rate.?limit|\b429\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini API quota or rate limit was reached. Check the quota for the Google Cloud project linked to this key, then try again.'
+      : 'Gemini API quota या rate limit पूरी हो गई। इस key से जुड़े Google Cloud project की quota जाँचकर फिर कोशिश करें।';
+  }
+  if (/not_found|not found|unsupported model|model.*not available|\b404\b/.test(details)) {
+    return lang === 'en'
+      ? 'The Gemini API key cannot access the configured vision model. Check model availability for this key and redeploy.'
+      : 'यह Gemini API key चुने गए vision model का उपयोग नहीं कर पा रही। इस key के लिए model availability जाँचें और फिर deploy करें।';
+  }
+  if (/invalid_argument|invalid image|unsupported mime|bad request|\b400\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini rejected the image request. Choose a JPG, PNG, or WEBP image and try again.'
+      : 'Gemini ने फोटो request स्वीकार नहीं की। JPG, PNG या WEBP फोटो चुनकर फिर कोशिश करें।';
+  }
+  if (/timeout|timed out/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini did not respond in time. Please retry with a smaller, clear image; if this continues, check the Vercel function logs.'
+      : 'Gemini ने समय पर जवाब नहीं दिया। छोटी और साफ फोटो से फिर कोशिश करें; समस्या बनी रहे तो Vercel function logs जाँचें।';
+  }
+
+  return lang === 'en'
+    ? 'Gemini could not complete the prescription scan. Check the Vercel function logs for the provider error, then try again.'
+    : 'Gemini पर्ची स्कैन पूरा नहीं कर पाया। Provider error के लिए Vercel function logs जाँचें और फिर कोशिश करें।';
+}
+
 // Language specifications for Gemini Prompts
 const LANGUAGE_PROMPT_MAP: Record<string, string> = {
   hi: 'Hindi (शुद्ध और सरल हिन्दी भाषा - केवल देवनागरी लिपि)',
@@ -472,12 +526,15 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
 }`;
 
     // Fast, lightweight models first for serverless environments (Vercel/Netlify)
-    const candidateModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    const candidateModels = [
+      { name: 'gemini-2.5-flash', timeoutMs: 35_000 },
+      { name: 'gemini-2.5-flash-lite', timeoutMs: 15_000 },
+    ];
 
-    let lastError: any = null;
+    const providerErrors: Array<{ model: string; message: string; status: string }> = [];
     let rawText = '';
 
-    for (const modelName of candidateModels) {
+    for (const { name: modelName, timeoutMs } of candidateModels) {
       try {
         console.log(`[Prescription OCR] Attempting model ${modelName}...`);
         const scanPromise = activeAi.models.generateContent({
@@ -495,9 +552,8 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
           },
         });
 
-        // Leave enough time for handwriting recognition while staying within the function limit.
         const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout with model ${modelName}`)), 22000)
+          setTimeout(() => reject(new Error(`Timeout with model ${modelName}`)), timeoutMs)
         );
 
         const response: any = await Promise.race([scanPromise, timeoutPromise]);
@@ -507,19 +563,24 @@ Return STRICTLY a JSON object matching this schema (NO markdown, NO extra text):
           break;
         }
       } catch (err: any) {
-        lastError = err;
-        console.warn(`[Prescription OCR] Model ${modelName} failed (${err.message?.slice(0, 100)}), trying next candidate...`);
+        const details = getGeminiErrorDetails(err);
+        providerErrors.push({ model: modelName, ...details });
+        console.warn(`[Prescription OCR] Model ${modelName} failed (status ${details.status || 'unknown'}): ${details.message || String(err)}`);
+        if (
+          /\b401\b|\b403\b|\b429\b|api.?key|unauthorized|permission_denied|resource_exhausted|quota/i.test(
+            `${details.status} ${details.message}`
+          )
+        ) {
+          break;
+        }
       }
     }
 
     if (!rawText) {
-      console.error('[Prescription OCR] All vision models failed or timed out:', lastError);
+      console.error('[Prescription OCR] All vision models failed or timed out:', providerErrors);
       return res.status(200).json({
         success: false,
-        error:
-          lang === 'en'
-            ? 'Prescription could not be clearly scanned due to temporary AI network traffic or image clarity. Please upload a clear, well-lit photo and try again.'
-            : 'पर्ची को स्कैन करने में समस्या आई। कृपया पर्ची की सीधी व साफ फोटो अपलोड करें और पुनः प्रयास करें।',
+        error: getPrescriptionScanError(providerErrors, lang),
       });
     }
 

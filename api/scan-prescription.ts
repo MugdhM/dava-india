@@ -16,6 +16,60 @@ function getScanError(lang: string): string {
     : 'पर्ची स्कैन सेवा में त्रुटि आई। कृपया Vercel function logs जाँचें और फिर कोशिश करें।';
 }
 
+function getProviderError(error: unknown): { message: string; status: string } {
+  if (!error || typeof error !== 'object') {
+    return { message: String(error ?? ''), status: '' };
+  }
+
+  const providerError = error as Record<string, unknown>;
+  const nested = providerError.error && typeof providerError.error === 'object'
+    ? providerError.error as Record<string, unknown>
+    : {};
+  return {
+    message: [
+      providerError.message,
+      nested.message,
+      providerError.statusText,
+      nested.status,
+    ].filter((part): part is string => typeof part === 'string').join(' '),
+    status: String(providerError.status ?? providerError.code ?? nested.code ?? nested.status ?? ''),
+  };
+}
+
+function getUserScanError(errors: Array<{ message: string; status: string }>, lang: string): string {
+  const details = errors.map((error) => `${error.status} ${error.message}`.toLowerCase()).join(' ');
+
+  if (/api.?key|unauthorized|permission_denied|permission denied|\b401\b|\b403\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini rejected the API key or its permissions. In Google AI Studio, verify the key is active, Gemini API is enabled, and the key restrictions allow Gemini API requests.'
+      : 'Gemini API key या उसकी permission स्वीकार नहीं हुई। Google AI Studio में जाँचें कि key सक्रिय है, Gemini API चालू है और key restrictions Gemini API requests की अनुमति देती हैं।';
+  }
+  if (/resource_exhausted|quota|rate.?limit|\b429\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini API quota or rate limit was reached. Check the quota for the Google Cloud project linked to this key, then try again.'
+      : 'Gemini API quota या rate limit पूरी हो गई। इस key से जुड़े Google Cloud project की quota जाँचकर फिर कोशिश करें।';
+  }
+  if (/not_found|not found|unsupported model|model.*not available|\b404\b/.test(details)) {
+    return lang === 'en'
+      ? 'The Gemini API key cannot access the configured vision model. Check model availability for this key and redeploy.'
+      : 'यह Gemini API key चुने गए vision model का उपयोग नहीं कर पा रही। इस key के लिए model availability जाँचें और फिर deploy करें।';
+  }
+  if (/invalid_argument|invalid image|unsupported mime|bad request|\b400\b/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini rejected the image request. Choose a JPG, PNG, or WEBP image and try again.'
+      : 'Gemini ने फोटो request स्वीकार नहीं की। JPG, PNG या WEBP फोटो चुनकर फिर कोशिश करें।';
+  }
+  if (/timeout|timed out/.test(details)) {
+    return lang === 'en'
+      ? 'Gemini did not respond in time. Please retry with a smaller, clear image; if this continues, check the Vercel function logs.'
+      : 'Gemini ने समय पर जवाब नहीं दिया। छोटी और साफ फोटो से फिर कोशिश करें; समस्या बनी रहे तो Vercel function logs जाँचें।';
+  }
+
+  return lang === 'en'
+    ? 'Gemini could not complete the prescription scan. Check the Vercel function logs for the provider error, then try again.'
+    : 'Gemini पर्ची स्कैन पूरा नहीं कर पाया। Provider error के लिए Vercel function logs जाँचें और फिर कोशिश करें।';
+}
+
 export default async function handler(req: Request, res: Response) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -113,9 +167,13 @@ Return only a strict JSON object with this schema:
     console.error('[Prescription OCR] Failed to initialize Gemini client:', error);
     return res.status(500).json({ success: false, error: getScanError(lang) });
   }
-  let lastError: unknown;
+  const providerErrors: Array<{ model: string; message: string; status: string }> = [];
 
-  for (const model of ['gemini-2.5-flash', 'gemini-2.5-flash-lite']) {
+  const models = [
+    { name: 'gemini-2.5-flash', timeoutMs: 35_000 },
+    { name: 'gemini-2.5-flash-lite', timeoutMs: 15_000 },
+  ];
+  for (const { name: model, timeoutMs } of models) {
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
       const response = await Promise.race([
@@ -129,7 +187,7 @@ Return only a strict JSON object with this schema:
           },
         }),
         new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(`Timeout with model ${model}`)), 22000);
+          timeoutId = setTimeout(() => reject(new Error(`Timeout with model ${model}`)), timeoutMs);
         }),
       ]);
 
@@ -191,31 +249,25 @@ Return only a strict JSON object with this schema:
 
       return res.status(200).json({ success: true, data: parsed, isRealScan: true });
     } catch (error) {
-      lastError = error;
-      console.error(`[Prescription OCR] Model ${model} failed:`, error);
+      const details = getProviderError(error);
+      providerErrors.push({ model, ...details });
+      console.error(`[Prescription OCR] Model ${model} failed (status ${details.status || 'unknown'}): ${details.message || String(error)}`);
+      if (
+        /\b401\b|\b403\b|\b429\b|api.?key|unauthorized|permission_denied|resource_exhausted|quota/i.test(
+          `${details.status} ${details.message}`
+        )
+      ) {
+        break;
+      }
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
-  const providerError =
-    lastError instanceof Error ? lastError.message.toLowerCase() : '';
-  console.error('[Prescription OCR] All vision models failed:', lastError);
-
-  const userError = providerError.includes('api key') || providerError.includes('unauthorized')
-    ? lang === 'en'
-      ? 'Gemini rejected the API key. Replace GEMINI_API_KEY in Vercel with a valid, active key and redeploy.'
-      : 'Gemini API key अस्वीकार हुई। Vercel में GEMINI_API_KEY को नई वैध key से बदलकर redeploy करें।'
-    : providerError.includes('quota') || providerError.includes('resource_exhausted') || providerError.includes('429')
-      ? lang === 'en'
-        ? 'Gemini API quota or rate limit was reached. Check the API project quota and try again later.'
-        : 'Gemini API की quota या rate limit पूरी हो गई है। API project quota जाँचें और बाद में फिर कोशिश करें।'
-      : lang === 'en'
-        ? 'Gemini could not read this prescription. Check that the API key has access to Gemini 2.5 Flash, then try a sharp, well-lit photo.'
-        : 'Gemini इस पर्ची को पढ़ नहीं पाया। जाँचें कि API key को Gemini 2.5 Flash का access है, फिर साफ़ और अच्छी रोशनी वाली फोटो से कोशिश करें।';
+  console.error('[Prescription OCR] All vision models failed:', providerErrors);
 
   return res.status(200).json({
     success: false,
-    error: userError,
+    error: getUserScanError(providerErrors, lang),
   });
 }
