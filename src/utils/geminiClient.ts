@@ -78,6 +78,15 @@ export async function scanPrescriptionImage(
       }
     } else {
       endpointStatus = response.status;
+      const text = await response.text();
+      try {
+        const result = JSON.parse(text);
+        if (typeof result?.error === 'string') {
+          return { success: false, error: result.error };
+        }
+      } catch (jsonErr) {
+        console.warn('Could not parse server error response:', jsonErr);
+      }
       console.warn(`Server responded with status ${response.status}`);
     }
   } catch (netErr) {
