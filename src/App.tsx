@@ -27,7 +27,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { AdminPanel } from './components/AdminPanel';
 
-// Firebase integrations
+// Firebase integrationss
 import { subscribeToAuth, logOut } from './firebase/authService';
 import {
   subscribePatients,
